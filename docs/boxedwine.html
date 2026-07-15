@@ -32,40 +32,58 @@
       #bootOverlay .stage{font-weight:700;color:#ffd471;font-size:16px}
       #bootOverlay .time{font-variant-numeric:tabular-nums;color:#9fb0c2;font-size:14px}
       #bootOverlay .note{color:#6f8093;font-size:12px;max-width:420px;text-align:center;padding:0 16px}
+      #bootOverlay .chd{margin-top:20px;color:#ffd471;font-weight:700;font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+      #bootOverlay .ctrls{margin-top:12px;display:grid;grid-template-columns:auto auto;gap:9px 26px;color:#c3d0de;font-size:14px}
+      #bootOverlay .ctrls .row{display:flex;align-items:center;gap:9px}
+      #bootOverlay .ctrls .k{color:#0c1017;background:linear-gradient(180deg,#f4f6fa,#c8cfd8);
+        border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;box-shadow:0 2px 0 #7c8794;
+        min-width:24px;text-align:center;display:inline-block}
       #loading{display:none!important}
     </style>
     <script>
     (function(){
-      // Информативный экран загрузки вместо голого спиннера BoxedWine.
+      // Информативный экран загрузки: прогресс привязан к РЕАЛЬНЫМ вехам из лога эмулятора.
       var t0 = Date.now();
-      var phase = 'download';           // download -> boot -> done
-      var bootStart = 0;
-      var EXPECT_BOOT = 30;             // ожидаемое время запуска среды (с), для оценки
-      var lastStage = '';
-      window.__boot = { seen:{} };
+      // Вехи (подстрока в логе -> целевой %). Появляются по мере загрузки Wine/игры.
+      var ANCHORS = [
+        { s:'Using root directory', pct:10 },
+        { s:'Loaded boxedwine.zip',  pct:18 },
+        { s:'Mounted ',              pct:26 },
+        { s:'Launching ',            pct:34 },
+        { s:'winpin.exe',            pct:52 },
+        { s:'Showing Window',        pct:86 },
+        { s:'openAudio',             pct:95 }
+      ];
+      var cur = 0, curAt = Date.now(), phase='download', done=false;
+      var status = '';
 
       function mark(text){
         if(!text) return;
-        if(text.indexOf('Loaded boxedwine.zip')>=0 || text.indexOf('Mounted ')>=0){
-          if(phase==='download'){ phase='boot'; bootStart=Date.now(); }
+        for(var i=0;i<ANCHORS.length;i++){
+          if(ANCHORS[i].pct>cur && text.indexOf(ANCHORS[i].s)>=0){ cur=ANCHORS[i].pct; curAt=Date.now(); phase='boot'; }
         }
-        if(text.indexOf('Launching ')>=0){ if(phase==='download'){phase='boot'; bootStart=Date.now();} window.__boot.seen.launch=1; }
-        if(text.indexOf('Showing Window')>=0){ phase='done'; }
+        if(text.indexOf('Showing Window')>=0){ setTimeout(function(){ done=true; }, 500); }
       }
-      // Перехватываем вывод эмулятора (идёт через console.log)
       var _log = console.log;
-      console.log = function(){ try{ mark(Array.prototype.join.call(arguments,' ')); }catch(e){} return _log.apply(console, arguments); };
+      console.log = function(){ try{ mark(Array.prototype.slice.call(arguments).join(' ')); }catch(e){} return _log.apply(console, arguments); };
 
-      // Перехватываем статус загрузки файлов (Downloading/Preparing) — ждём появления Module
+      // Статус загрузки файлов (Downloading/Preparing) — до старта Wine
       var si = setInterval(function(){
         if(window.Module && Module.setStatus && !Module.setStatus.__wrapped){
           var _s = Module.setStatus;
-          Module.setStatus = function(txt){ window.__boot.status = txt; return _s.apply(Module, arguments); };
-          Module.setStatus.__wrapped = true;
-          clearInterval(si);
+          Module.setStatus = function(txt){ status=txt||''; return _s.apply(Module, arguments); };
+          Module.setStatus.__wrapped = true; clearInterval(si);
         }
       }, 100);
 
+      function nextPct(){ for(var i=0;i<ANCHORS.length;i++){ if(ANCHORS[i].pct>cur) return ANCHORS[i].pct; } return 99; }
+      function stageLabel(){
+        if(cur<10) return 'Загрузка файлов движка…';
+        if(cur<26) return 'Подготовка файловой системы…';
+        if(cur<52) return 'Запуск Windows-среды…';
+        if(cur<86) return 'Загрузка игры…';
+        return 'Почти готово…';
+      }
       function fmt(s){ s=Math.max(0,Math.round(s)); return s+' с'; }
 
       document.addEventListener('DOMContentLoaded', function(){
@@ -77,36 +95,48 @@
           '<div class="track" id="boTrack"><div class="bar" id="boBar"></div></div>'+
           '<div class="stage" id="boStage">Подготовка…</div>'+
           '<div class="time" id="boTime"></div>'+
-          '<div class="note" id="boNote">Первый запуск идёт дольше — поднимается Windows-среда. Дальше будет быстрее.</div>';
+          '<div class="chd">Управление</div>'+
+          '<div class="ctrls">'+
+            '<div class="row"><span class="k">Z</span>левый флиппер</div>'+
+            '<div class="row"><span class="k">R&nbsp;Shift</span>правый флиппер</div>'+
+            '<div class="row"><span class="k">Enter</span>запуск мяча</div>'+
+            '<div class="row"><span class="k">Space</span>толчок вверх</div>'+
+            '<div class="row"><span class="k">X</span>толчок вправо</div>'+
+            '<div class="row"><span class="k">/</span>толчок влево</div>'+
+          '</div>'+
+          '<div class="note" id="boNote">Первый запуск дольше — в браузере поднимается Windows-среда. Дальше игра идёт из памяти.</div>';
         document.body.appendChild(ov);
         var track=document.getElementById('boTrack'), bar=document.getElementById('boBar'),
             stage=document.getElementById('boStage'), time=document.getElementById('boTime');
+        var shown = 0;
 
         var iv = setInterval(function(){
-          var elapsed = (Date.now()-t0)/1000;
-          if(phase==='download'){
-            var st = (window.__boot.status||'').toLowerCase();
-            track.classList.add('indet');
-            stage.textContent = st.indexOf('prepar')>=0 ? 'Подготовка файлов…' : 'Загрузка файлов движка…';
-            time.textContent = 'Прошло '+fmt(elapsed);
-          } else if(phase==='boot'){
-            track.classList.remove('indet');
-            var be = (Date.now()-bootStart)/1000;
-            var pct = Math.min(96, be/EXPECT_BOOT*100);
-            bar.style.width = pct.toFixed(0)+'%';
-            stage.textContent = window.__boot.seen.launch ? 'Запуск игры…' : 'Запуск Windows-среды…';
-            var left = EXPECT_BOOT - be;
-            time.textContent = left>1 ? ('осталось ≈'+fmt(left)) : 'почти готово…';
-          } else { // done
-            track.classList.remove('indet');
-            bar.style.width='100%';
-            stage.textContent='Готово!';
-            time.textContent='';
+          var elapsed=(Date.now()-t0)/1000;
+          if(done){
+            track.classList.remove('indet'); bar.style.width='100%';
+            stage.textContent='Готово!'; time.textContent='';
             clearInterval(iv);
-            var el=document.getElementById('bootOverlay');
-            el.classList.add('hide');
-            setTimeout(function(){ if(el&&el.parentNode) el.parentNode.removeChild(el); }, 700);
+            ov.classList.add('hide');
+            setTimeout(function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); }, 700);
+            return;
           }
+          if(phase==='download' && cur===0){
+            // фаза скачивания/подготовки файлов (реального % байт нет — показываем занятость + время)
+            track.classList.add('indet');
+            stage.textContent = (status.toLowerCase().indexOf('prepar')>=0) ? 'Подготовка файлов…' : 'Загрузка файлов движка…';
+            time.textContent = 'прошло '+fmt(elapsed);
+            return;
+          }
+          // фаза запуска: прогресс между реальными вехами с плавным приближением
+          track.classList.remove('indet');
+          var np=nextPct(), since=(Date.now()-curAt)/1000;
+          var creep = cur + (np-1-cur)*(1-Math.exp(-since/9)); // тянемся к следующей вехе, не перепрыгивая
+          shown = Math.max(shown, creep);                       // монотонно
+          bar.style.width = shown.toFixed(1)+'%';
+          stage.textContent = stageLabel();
+          // оценка остатка из фактического прогресса
+          var left = shown>6 ? elapsed*(100-shown)/shown : 0;
+          time.textContent = (shown<93 && left>2) ? ('осталось ≈'+fmt(Math.min(left,180))) : 'почти готово…';
         }, 250);
       });
     })();
