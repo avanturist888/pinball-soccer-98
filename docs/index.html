@@ -69,6 +69,21 @@
   .play:active{transform:translateY(6px);box-shadow:0 4px 0 #a9540c,0 10px 20px rgba(255,140,40,.3)}
   .play .arrow{font-size:1.1em}
   .hint{margin-top:16px;color:#93a4b7;font-size:13px}
+  .play[disabled]{opacity:.55;cursor:default;filter:saturate(.6)}
+
+  .loader{max-width:420px;margin:6px auto 0}
+  .loader[hidden]{display:none}
+  .bar{height:16px;border-radius:999px;overflow:hidden;
+    background:#0b1017;border:1px solid var(--line);box-shadow:inset 0 2px 6px rgba(0,0,0,.6)}
+  .fill{height:100%;width:0%;border-radius:999px;
+    background:linear-gradient(90deg,#ffe27a,#ffb02e 55%,#ff7a1c);
+    box-shadow:0 0 14px rgba(255,150,40,.5);
+    transition:width .25s ease}
+  .lstat{margin-top:10px;font-variant-numeric:tabular-nums;font-weight:700;
+    color:#ffd471;font-size:16px;display:flex;gap:10px;justify-content:center;align-items:center}
+  .lstat .dot{color:#5b6a7e}
+  .lmsg{margin-top:6px;color:#9fb0c2;font-size:13px}
+  .lmsg.err{color:#ff8a76}
 
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:30px}
   @media (max-width:640px){.grid{grid-template-columns:1fr}}
@@ -103,10 +118,13 @@
   <div class="stage">
     <div class="marquee"><span class="ball"></span><b>DYNAMITE SOCCER PINBALL — TOURNAMENT TABLE</b></div>
     <div class="playfield">
-      <a class="play" href="boxedwine.html?app=pinball&p=winpin.bat&resolution=800x600&sound=true">
-        <span class="arrow">▸</span> ИГРАТЬ
-      </a>
-      <div class="hint">Первая загрузка занимает 20–40 секунд: в браузере поднимается Windows-совместимая среда и распаковывается стол.</div>
+      <button class="play" id="playBtn"><span class="arrow">▸</span> ИГРАТЬ</button>
+      <div class="loader" id="loader" hidden>
+        <div class="bar"><div class="fill" id="fill"></div></div>
+        <div class="lstat"><span id="pct">0%</span><span class="dot">·</span><span id="mb">0 / 0 МБ</span></div>
+        <div class="lmsg" id="lmsg">Загрузка движка и игры…</div>
+      </div>
+      <div class="hint" id="hint">Первая загрузка — около 70&nbsp;МБ (потом кэшируется браузером). После скачивания стол разворачивается ещё 1–2&nbsp;минуты — это разово, дальше игра идёт из памяти.</div>
     </div>
   </div>
 
@@ -138,5 +156,82 @@
     <p class="disc">Проект сделан для сохранения и ностальгии. Все права на игру принадлежат правообладателям. Если вы правообладатель и против размещения — свяжитесь, материал будет удалён.</p>
   </footer>
 </div>
+
+<script>
+(function(){
+  var GAME_URL = 'boxedwine.html?app=pinball&p=winpin.bat&resolution=800x600&sound=true';
+  // Файлы, которые тянет эмулятор. Размеры — запасной вариант, если сервер не отдаёт Content-Length.
+  var ASSETS = [
+    { url: 'boxedwine.wasm', size: 2303715 },
+    { url: 'boxedwine.zip',  size: 37247698 },
+    { url: 'pinball.zip',    size: 33132474 }
+  ];
+  var btn = document.getElementById('playBtn');
+  var loader = document.getElementById('loader');
+  var fill = document.getElementById('fill');
+  var pct = document.getElementById('pct');
+  var mbEl = document.getElementById('mb');
+  var lmsg = document.getElementById('lmsg');
+  var hint = document.getElementById('hint');
+
+  function fmtMB(b){ return (b/1048576).toFixed(1); }
+  function go(){ window.location.href = GAME_URL; }
+
+  btn.addEventListener('click', function(){
+    // Если fetch/streams недоступны — просто переходим (эмулятор покажет свой спиннер).
+    if (!window.fetch || !window.ReadableStream) { go(); return; }
+    btn.disabled = true;
+    loader.hidden = false;
+    hint.textContent = 'Идёт загрузка. Не закрывайте вкладку — файлы кэшируются, повторный запуск будет мгновенным.';
+
+    var loaded = new Array(ASSETS.length).fill(0);
+    var totals = ASSETS.map(function(a){ return a.size; });
+
+    function render(){
+      var done = loaded.reduce(function(s,x){return s+x;},0);
+      var total = totals.reduce(function(s,x){return s+x;},0);
+      var p = total ? Math.min(100, Math.round(done/total*100)) : 0;
+      fill.style.width = p + '%';
+      pct.textContent = p + '%';
+      mbEl.textContent = fmtMB(done) + ' / ' + fmtMB(total) + ' МБ';
+    }
+
+    function loadOne(i){
+      var a = ASSETS[i];
+      return fetch(a.url, { cache: 'force-cache' }).then(function(resp){
+        if (!resp.ok) throw new Error(a.url + ' → HTTP ' + resp.status);
+        var len = parseInt(resp.headers.get('content-length') || '0', 10);
+        if (len) totals[i] = len;
+        if (!resp.body || !resp.body.getReader){
+          // нет стриминга — просто дочитаем целиком
+          return resp.arrayBuffer().then(function(buf){ loaded[i] = buf.byteLength; totals[i]=buf.byteLength; render(); });
+        }
+        var reader = resp.body.getReader();
+        return (function pump(){
+          return reader.read().then(function(r){
+            if (r.done) return;
+            loaded[i] += r.value.length;
+            render();
+            return pump();
+          });
+        })();
+      });
+    }
+
+    render();
+    Promise.all(ASSETS.map(function(_,i){ return loadOne(i); }))
+      .then(function(){
+        fill.style.width = '100%'; pct.textContent = '100%';
+        lmsg.textContent = 'Готово! Запускаем эмулятор…';
+        setTimeout(go, 500);
+      })
+      .catch(function(err){
+        lmsg.className = 'lmsg err';
+        lmsg.textContent = 'Ошибка загрузки: ' + err.message + '. Запускаем напрямую…';
+        setTimeout(go, 1500);
+      });
+  });
+})();
+</script>
 </body>
 </html>

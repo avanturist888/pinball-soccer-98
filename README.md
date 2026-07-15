@@ -2,7 +2,8 @@
 
 Запуск классической игры **Dynamite Soccer Pinball '98** (Pin-Ball Games Ltd., 1998,
 Windows 95/98) прямо в браузере — без установки, целиком на стороне клиента.
-Готово к публикации на **GitHub Pages**.
+
+### ▶ Играть онлайн: **https://vasia123.github.io/pinball-soccer-98/**
 
 Оригинал распространялся как единый Windows‑исполняемый файл (DirectDraw‑игра).
 Здесь он запускается через [**BoxedWine**](https://github.com/danoon2/Boxedwine) —
