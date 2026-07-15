@@ -39,6 +39,35 @@
         border-radius:6px;padding:3px 8px;font-weight:700;font-size:12px;box-shadow:0 2px 0 #7c8794;
         min-width:24px;text-align:center;display:inline-block}
       #loading{display:none!important}
+
+      /* Раскладка: игра слева на всю высоту, интерфейс — в правой панели */
+      html,body{margin:0;height:100%;background:#0b0f16;overflow:hidden}
+      #app{display:flex;height:100vh;width:100vw;overflow:hidden;background:#0b0f16}
+      #stage{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:center;
+        padding:6px;background:#05070b}
+      #stage #dropzone{border:0!important;margin:0;padding:0;max-width:100%;max-height:100%;
+        display:flex;align-items:center;justify-content:center}
+      #stage .emscripten_border{border:0!important;margin:0;padding:0;background:transparent;
+        display:flex;align-items:center;justify-content:center}
+      #stage canvas{display:block;background:#000;box-shadow:0 0 40px rgba(0,0,0,.55)}
+      #side{flex:0 0 296px;width:296px;display:flex;flex-direction:column;gap:12px;
+        padding:14px;background:#0d1219;border-left:1px solid rgba(255,255,255,.08);
+        color:#c3d0de;font-family:"Segoe UI",system-ui,Arial,sans-serif;overflow:hidden}
+      #sideTitle{font-weight:800;color:#ffd471;font-size:15px;letter-spacing:.02em}
+      #controlsBar{display:flex;flex-direction:column;gap:9px;font-size:13px;color:#c3d0de;line-height:1.4}
+      #controlsBar label,#controlsBar input[type=checkbox]{cursor:pointer;vertical-align:middle}
+      #controlsBar input[type=button]{align-self:flex-start;margin-top:4px;padding:7px 14px;border-radius:8px;
+        border:none;background:linear-gradient(180deg,#ffe27a,#ffb02e);color:#12203a;font-weight:700;cursor:pointer}
+      #sideHint{color:#7d8da0;font-size:12px;line-height:1.5}
+      #consoleWrap{flex:1 1 auto;min-height:0;display:flex}
+      #consoleWrap #output{flex:1;width:100%;height:100%;resize:none;box-sizing:border-box;
+        background:#05070b;color:#7fe0a0;border:1px solid rgba(255,255,255,.08);border-radius:6px;
+        padding:6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.35}
+      @media (max-width:820px){
+        #app{flex-direction:column}
+        #side{flex:0 0 auto;width:auto;border-left:0;border-top:1px solid rgba(255,255,255,.08)}
+        #stage{min-height:60vh}
+      }
     </style>
     <script>
     (function(){
@@ -139,6 +168,19 @@
           time.textContent = (shown<93 && left>2) ? ('осталось ≈'+fmt(Math.min(left,180))) : 'почти готово…';
         }, 250);
       });
+
+      // Масштабируем canvas игры под доступную область слева (пропорции сохраняются;
+      // масштаб равномерный, поэтому эмулятор мапит мышь корректно). Интервал ловит смену
+      // разрешения игрой (canvas.width/height меняются).
+      function fitCanvas(){
+        if(document.fullscreenElement) return;
+        var stage=document.getElementById('stage'), c=document.getElementById('canvas');
+        if(!stage||!c||!c.width||!c.height) return;
+        var scale=Math.min(stage.clientWidth/c.width, stage.clientHeight/c.height);
+        if(scale>0 && isFinite(scale)){ c.style.width=Math.round(c.width*scale)+'px'; c.style.height=Math.round(c.height*scale)+'px'; }
+      }
+      window.addEventListener('resize', fitCanvas);
+      setInterval(fitCanvas, 400);
     })();
     </script>
   </head>
@@ -153,31 +195,37 @@
       </div>
   </div>
     <div>
-        <div class="emscripten">
-            <button id="startbtn" style="display: none" onclick="start()">Start</button>
-            <button id="uploadbtn" style="display: none" onclick="document.getElementById('upload').click()" >Add File(s)</button>
-            <input style="display: none" id="upload" name="upload" onclick="document.getElementById('uploadbtn').click();" onchange="startWithFiles(event.target.files);"  type="file" multiple />
-            <button id="downloadbtn" style="display: none" onclick="buildGetFilesModal();">Get File(s)</button>
-            <a style="display: none" id="modalLink" href="#openModal">Open</a>
-            <a style="display: none" id="modalLinkExe" href="#openModalExe">Open</a>
-
-          <span id="sound-checkbox" style="display: none">
-              <input type="checkbox" id="soundToggle" onclick="toggleSound();" />Enable Sound
-          </span>
-          <input type="checkbox" id="pointerLock" checked>Lock/hide mouse pointer
-          <input type="checkbox" id="showConsole" onclick="toggleConsole();" checked>Show console
-          &nbsp;&nbsp;&nbsp;
-          <input type="checkbox" id="resize">Resize canvas
-          <input type="button" value="Fullscreen" onclick="Module.requestFullscreen(document.getElementById('pointerLock').checked, document.getElementById('resize').checked)">
-        </div>
-        <div id="dropzone">
-            <div class="emscripten_border">
-                <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+      <div id="app">
+        <div id="stage">
+            <div id="dropzone">
+                <div class="emscripten_border">
+                    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+                </div>
             </div>
         </div>
-        <div>
-            <textarea class="emscripten" id="output" rows="8" style="display: none"></textarea>
-        </div>
+        <aside id="side">
+            <div id="sideTitle">⚽ Soccer Pinball ’98</div>
+            <div class="emscripten" id="controlsBar">
+                <button id="startbtn" style="display: none" onclick="start()">Start</button>
+                <button id="uploadbtn" style="display: none" onclick="document.getElementById('upload').click()" >Add File(s)</button>
+                <input style="display: none" id="upload" name="upload" onclick="document.getElementById('uploadbtn').click();" onchange="startWithFiles(event.target.files);"  type="file" multiple />
+                <button id="downloadbtn" style="display: none" onclick="buildGetFilesModal();">Get File(s)</button>
+                <a style="display: none" id="modalLink" href="#openModal">Open</a>
+                <a style="display: none" id="modalLinkExe" href="#openModalExe">Open</a>
+                <span id="sound-checkbox" style="display: none">
+                    <input type="checkbox" id="soundToggle" onclick="toggleSound();" />Enable Sound
+                </span>
+                <label><input type="checkbox" id="pointerLock" checked> Захват мыши</label>
+                <label><input type="checkbox" id="showConsole" onclick="toggleConsole();"> Показать консоль</label>
+                <input type="checkbox" id="resize" style="display:none">
+                <input type="button" value="На весь экран" onclick="Module.requestFullscreen(document.getElementById('pointerLock').checked, document.getElementById('resize').checked)">
+                <div id="sideHint">Флипперы: <b>Z</b> / <b>R&nbsp;Shift</b><br>Запуск мяча: <b>Enter</b><br>Толчки: <b>Space</b> вверх · <b>X</b> вправо · <b>/</b> влево</div>
+            </div>
+            <div id="consoleWrap">
+                <textarea class="emscripten" id="output" rows="8" style="display: none"></textarea>
+            </div>
+        </aside>
+      </div>
         <div id="openModal" class="modalDialog">
             <div> <a href="#close" title="Close" class="close" onclick="closeGetFilesModal();">X</a>
                 <div>
