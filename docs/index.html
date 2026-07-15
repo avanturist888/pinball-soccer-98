@@ -125,6 +125,81 @@
       font-size: 11px;
       color: #c8d0e0;
     }
+
+    /* On-screen touch controls: hidden on desktop, shown on touch devices. */
+    #touchpad {
+      display: none;
+      width: 100%;
+      max-width: 640px;
+      gap: 10px;
+      align-items: stretch;
+      touch-action: none;
+    }
+
+    #touchpad .side {
+      flex: 1 1 0;
+    }
+
+    #touchpad .mid {
+      flex: 0 0 34%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .tbtn {
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      background: #161c2a;
+      border: 1px solid #2a3448;
+      border-bottom-width: 3px;
+      border-radius: 12px;
+      color: #c8d0e0;
+      font-family: system-ui, sans-serif;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #touchpad .side .tbtn {
+      height: 96px;
+      font-size: 15px;
+      letter-spacing: .5px;
+    }
+
+    #touchpad .mid .tbtn {
+      flex: 1 1 0;
+      font-size: 13px;
+    }
+
+    .tbtn small {
+      display: block;
+      font-size: 10px;
+      font-weight: 400;
+      color: #708098;
+      margin-top: 2px;
+    }
+
+    .tbtn.on {
+      background: #24406a;
+      border-color: #3a7bd5;
+      transform: translateY(1px);
+    }
+
+    /* Show the pad and hide the keyboard legend on touch devices. */
+    body.touch #touchpad {
+      display: flex;
+    }
+
+    body.touch .controls.legend {
+      display: none;
+    }
   </style>
 </head>
 
@@ -140,16 +215,59 @@
       <div class="controls" style="margin-top:8px">Кликните по экрану, чтобы включить звук</div>
     </div>
   </div>
-  <div class="controls">
+  <div class="controls legend">
     <span><b>Флипперы:</b> <kbd>Z</kbd> <kbd>⇧ Shift</kbd></span>
     <span><b>Подача:</b> <kbd>Enter</kbd></span>
     <span><b>Толчок:</b> <kbd>Space</kbd> <kbd>X</kbd> <kbd>/</kbd></span>
     <span><b>Меню:</b> мышь</span>
   </div>
 
+  <div id="touchpad">
+    <div class="side"><button class="tbtn" data-code="KeyZ">◀ ФЛИППЕР</button></div>
+    <div class="mid">
+      <button class="tbtn" data-code="Enter">ПОДАЧА<small>толкнуть мяч</small></button>
+      <button class="tbtn" data-code="Space">ТОЛЧОК<small>подтолкнуть стол</small></button>
+    </div>
+    <div class="side"><button class="tbtn" data-code="ShiftRight">ФЛИППЕР ▶</button></div>
+  </div>
+
   <script type="module">
     import { main } from './soccer.bundle.js';
     main();
+
+    // Touch controls: each button dispatches the same window KeyboardEvents the
+    // game already listens for (emulator.ts onKey), so no wasm changes needed.
+    (function setupTouchControls() {
+      const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+      if (isTouch) document.body.classList.add('touch');
+
+      const fire = (type, code) =>
+        window.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
+
+      for (const btn of document.querySelectorAll('.tbtn')) {
+        const code = btn.dataset.code;
+        let active = false;
+        const press = (e) => {
+          e.preventDefault();
+          try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+          if (active) return;
+          active = true;
+          btn.classList.add('on');
+          fire('keydown', code);
+        };
+        const release = () => {
+          if (!active) return;
+          active = false;
+          btn.classList.remove('on');
+          fire('keyup', code);
+        };
+        btn.addEventListener('pointerdown', press);
+        btn.addEventListener('pointerup', release);
+        btn.addEventListener('pointercancel', release);
+        btn.addEventListener('lostpointercapture', release);
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
+      }
+    })();
   </script>
 </body>
 
